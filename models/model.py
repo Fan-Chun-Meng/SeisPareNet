@@ -208,56 +208,29 @@ class Informer(nn.Module):
                 enc_self_mask=None, dec_self_mask=None, dec_enc_mask=None):
         #P波拾取子任务
         enc_out = self.enc_embedding(x_enc)
-        #enc_out_arrivetime = self.enc_arrivetime_embedding(x_enc)
         enc_out_arrivetime, attns_arrivetime = self.encoder_arrivetime(enc_out, attn_mask=enc_self_mask)
         enc_out_arrivetime2 = self.attention_2(enc_out_arrivetime)
         dec_out_arrive = self.projection_arrivetime(self.relu(enc_out_arrivetime.view(len(enc_out_arrivetime2), -1)))
 
-        #定位主任务
-        #enc_out = self.enc_embedding(x_enc)
-        # enc_out_loc = self.start_conv(x_enc)
-        # enc_out_loc = self.start_conv2(enc_out_loc)
-        # enc_out = self.start_conv3(enc_out_loc)
-        #dec_out = self.start_conv4(enc_out_loc)
         enc_out_loc, attns = self.encoder(enc_out, attn_mask=enc_self_mask)
         #P波到时特征作为注意力添加入主任务网络中
-        #enc_out_loc = torch.mul(enc_out_loc, F.normalize(enc_out_arrivetime, dim=1))
-        #dec_out_lat = self.dec_embedding_lat(x_dec_lat)
-        # dec_out_lat = self.attention_1(enc_out_loc, None)
-        # dec_out_lng = self.attention_2(enc_out_loc, None)
-        # pro_input_lat = dec_out_lat.view(len(dec_out_lat), dec_out_lat.shape[1] * dec_out_lat.shape[2])
-        # pro_input_lng = dec_out_lng.view(len(dec_out_lng), dec_out_lng.shape[1] * dec_out_lng.shape[2])
-        #dec_out, attn = self.encoder(enc_out_loc, None)
+
         enc_out = torch.mul(enc_out_loc, F.softmax(enc_out_arrivetime, dim=1))
         dec_out = (self.decoder(enc_out_loc, enc_out, x_mask=dec_self_mask, cross_mask=dec_enc_mask))
         pro_input = dec_out.view(len(dec_out), dec_out.shape[1] * dec_out.shape[2])
         dec_aiz = self.projection_aiz(pro_input)
         dec_lat = self.projection_lat(((pro_input)))
 
-        #enc_out_depth = self.enc_embedding(x_enc)
-        # enc_out_depth = self.start_conv(x_enc)
-        # enc_out_depth = self.start_conv2(enc_out_depth)
-        # enc_out_depth = self.start_conv3(enc_out_depth)
-        # enc_out_depth = self.start_conv4(enc_out_depth)
         enc_out_depth, attns = self.encoder_depth(enc_out, attn_mask=enc_self_mask)
-        #dec_out_depth = self.attention_1(enc_out_loc, None)
-        # receive_location = receive_location.squeeze()
-        # location = torch.cat((receive_location,elevation),1)
+
 
         pro_input_depth = enc_out_depth.view(len(enc_out_depth), enc_out_depth.shape[1] * enc_out_depth.shape[2])
-        # pro_input_depth = torch.cat((pro_input_depth,location))
-        # dec_out_aiz = self.decoder_aiz(enc_out_loc, enc_out, x_mask=dec_self_mask, cross_mask=dec_enc_mask)
-        # pro_input_aiz = dec_out_aiz.view(len(dec_out), dec_out_aiz.shape[1] * dec_out_aiz.shape[2])
-        # enc_out_aiz = self.attention_1(enc_out)
-        # pro_input_depth = enc_out_aiz.view(len(enc_out_aiz), enc_out_aiz.shape[1] * enc_out_aiz.shape[2])
+
 
         dec_depth = self.projection_depth((pro_input_depth))
 
-        #enc_out_ml = self.enc_embedding_ml(x_enc)
-        #enc_out_ml, attns = self.encoder_ml(enc_out_ml, attn_mask=enc_self_mask)
         enc_out_ml = torch.cat((enc_out, dec_out), dim=1)
-        #enc_out_ml = torch.cat((enc_out_ml, dec_out), dim=1)
-        #enc_out_ml = torch.mul(enc_out_ml, F.normalize(dec_out_lng, dim=1))
+
         dec_out_ml = self.dec_embedding_ml(x_dec)
         dec_out_ml = self.decoder_ml(dec_out_ml, enc_out_ml, x_mask=dec_self_mask, cross_mask=dec_enc_mask)
         dec_out_ml = dec_out_ml.view(len(dec_out_ml), dec_out_ml.shape[1] * dec_out_ml.shape[2])
