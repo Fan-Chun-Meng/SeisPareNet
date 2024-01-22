@@ -127,7 +127,7 @@ class Informer(nn.Module):
         self.decoder = Decoder(
             [
                 DecoderLayer(
-                    AttentionLayer(Attn(True, factor, attention_dropout=dropout, output_attention=False),
+                    AttentionLayer(FullAttention(True, factor, attention_dropout=dropout, output_attention=False),
                                    d_model, n_heads, mix=mix),
                     AttentionLayer(FullAttention(False, factor, attention_dropout=dropout, output_attention=False),
                                    d_model, n_heads, mix=False),
@@ -188,12 +188,10 @@ class Informer(nn.Module):
             ],
             norm_layer=torch.nn.LayerNorm(d_model)
         )
-        # self.end_conv1 = nn.Conv1d(in_channels=label_len+out_len, out_channels=out_len, kernel_size=1, bias=True)
-        # self.end_conv2 = nn.Conv1d(in_channels=d_model, out_channels=c_out, kernel_size=1, bias=True)
+
         self.start_conv = nn.Conv1d(in_channels=seq_len, out_channels=64, kernel_size=9, padding=4, stride=1)
-        self.start_conv2 = nn.Conv1d(in_channels=64, out_channels=128, kernel_size=7, padding=3, stride=1)
-        self.start_conv3 = nn.Conv1d(in_channels=128, out_channels=64, kernel_size=5, padding=2, stride=1)
-        self.start_conv4 = nn.Conv1d(in_channels=64, out_channels=seq_len, kernel_size=3, padding=1, stride=1)
+        self.start_conv2 = nn.Conv1d(in_channels=64, out_channels=seq_len, kernel_size=7, padding=3, stride=1)
+
         self.relu = nn.ReLU()
         self.attention_1 = MultiheadAttentionLayer(d_model, n_heads)
         self.attention_2 = MultiheadAttentionLayer(d_model, n_heads)
@@ -208,29 +206,27 @@ class Informer(nn.Module):
                 enc_self_mask=None, dec_self_mask=None, dec_enc_mask=None):
         #P波拾取子任务
         enc_out = self.enc_embedding(x_enc)
+        enc_out = self.start_conv(enc_out)
+        enc_out = self.start_conv2(enc_out)
         enc_out_arrivetime, attns_arrivetime = self.encoder_arrivetime(enc_out, attn_mask=enc_self_mask)
         enc_out_arrivetime2 = self.attention_2(enc_out_arrivetime)
         dec_out_arrive = self.projection_arrivetime(self.relu(enc_out_arrivetime.view(len(enc_out_arrivetime2), -1)))
 
+        #定位主任务
         enc_out_loc, attns = self.encoder(enc_out, attn_mask=enc_self_mask)
         #P波到时特征作为注意力添加入主任务网络中
-
         enc_out = torch.mul(enc_out_loc, F.softmax(enc_out_arrivetime, dim=1))
         dec_out = (self.decoder(enc_out_loc, enc_out, x_mask=dec_self_mask, cross_mask=dec_enc_mask))
         pro_input = dec_out.view(len(dec_out), dec_out.shape[1] * dec_out.shape[2])
         dec_aiz = self.projection_aiz(pro_input)
         dec_lat = self.projection_lat(((pro_input)))
 
+
         enc_out_depth, attns = self.encoder_depth(enc_out, attn_mask=enc_self_mask)
-
-
-        pro_input_depth = enc_out_depth.view(len(enc_out_depth), enc_out_depth.shape[1] * enc_out_depth.shape[2])
-
-
-        dec_depth = self.projection_depth((pro_input_depth))
+        enc_out_depth = enc_out_depth.view(len(enc_out_depth), enc_out_depth.shape[1] * enc_out_depth.shape[2])
+        dec_depth = self.projection_depth(enc_out_depth)
 
         enc_out_ml = torch.cat((enc_out, dec_out), dim=1)
-
         dec_out_ml = self.dec_embedding_ml(x_dec)
         dec_out_ml = self.decoder_ml(dec_out_ml, enc_out_ml, x_mask=dec_self_mask, cross_mask=dec_enc_mask)
         dec_out_ml = dec_out_ml.view(len(dec_out_ml), dec_out_ml.shape[1] * dec_out_ml.shape[2])
